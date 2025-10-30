@@ -88,12 +88,26 @@ export default function EmpleadoForm() {
   }
   const toDateInput = (d) => d.toISOString().slice(0,10)
   const minDate1900 = '1900-01-01'
-  // birth max: today - 18 years (must be at least 18 years old)
-  const birthMaxDate = (() => {
-    const n = esNow()
-    n.setFullYear(n.getFullYear() - 18)
-    return toDateInput(n)
-  })()
+  // birth max: by default today - 18 years, but if fecha_contratacion is set use fecha_contratacion - 18 years
+  const getBirthMaxDate = () => {
+    try {
+      if (model.fecha_contratacion) {
+        const fc = new Date(model.fecha_contratacion)
+        if (!isNaN(fc.getTime())) {
+          const d = new Date(fc)
+          d.setFullYear(d.getFullYear() - 18)
+          return toDateInput(d)
+        }
+      }
+      const n = esNow()
+      n.setFullYear(n.getFullYear() - 18)
+      return toDateInput(n)
+    } catch (e) {
+      const n = esNow()
+      n.setFullYear(n.getFullYear() - 18)
+      return toDateInput(n)
+    }
+  }
   // contratacion max: today minus recentDays (prevent dates too close to now)
   const RECENT_DAYS_BLOCK = 2 // assumption: contratación cannot be within the last 2 days
   const contratacionMaxDate = (() => {
@@ -126,8 +140,45 @@ export default function EmpleadoForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
+    // immediate model update
     setModel(prev => ({ ...prev, [name]: value }))
+
+    // clear the specific field error by default
     setFieldErrors(prev => { const c = { ...prev }; delete c[name]; return c })
+
+    // If the contratación date changes, validate that existing birth date still satisfies 18yo at hiring
+    if (name === 'fecha_contratacion' && value) {
+      try {
+        const fc = new Date(value)
+        if (!isNaN(fc.getTime()) && model.fecha_nacimiento) {
+          const fn = new Date(model.fecha_nacimiento)
+          const birthLimitAtHiring = new Date(fc)
+          birthLimitAtHiring.setFullYear(birthLimitAtHiring.getFullYear() - 18)
+          if (isNaN(fn.getTime()) || fn > birthLimitAtHiring) {
+            setFieldErrors(prev => ({ ...prev, fecha_nacimiento: 'Empleado debe tener al menos 18 años al momento de la contratación' }))
+          } else {
+            setFieldErrors(prev => { const c = { ...prev }; delete c.fecha_nacimiento; return c })
+          }
+        }
+      } catch (_) {}
+    }
+
+    // If birth date changes, check it against current contratación (if present)
+    if (name === 'fecha_nacimiento' && value && model.fecha_contratacion) {
+      try {
+        const fn = new Date(value)
+        const fc = new Date(model.fecha_contratacion)
+        if (!isNaN(fn.getTime()) && !isNaN(fc.getTime())) {
+          const birthLimitAtHiring = new Date(fc)
+          birthLimitAtHiring.setFullYear(birthLimitAtHiring.getFullYear() - 18)
+          if (fn > birthLimitAtHiring) {
+            setFieldErrors(prev => ({ ...prev, fecha_nacimiento: 'Empleado debe tener al menos 18 años al momento de la contratación' }))
+          } else {
+            setFieldErrors(prev => { const c = { ...prev }; delete c.fecha_nacimiento; return c })
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   // Format numeric-like fields to 2 decimals on blur (keeps string representation in inputs)
@@ -237,9 +288,10 @@ export default function EmpleadoForm() {
         if (fc > esToday) errs.fecha_contratacion = 'Fecha de contratación no puede ser en el futuro'
         if (fc > contratacionLimit) errs.fecha_contratacion = `Fecha de contratación no puede estar dentro de los últimos ${RECENT_DAYS_BLOCK} días`
         if (fc < fn) errs.fecha_contratacion = 'Fecha de contratación no puede ser anterior a la fecha de nacimiento'
-        // birth must be at least 18 years before esToday
-        const birthLimit = (() => { const d = esNow(); d.setFullYear(d.getFullYear() - 18); return d })()
-        if (fn > birthLimit) errs.fecha_nacimiento = 'Empleado debe ser mayor de 18 años'
+        // birth must be at least 18 years before the hiring date (majority at contratacion)
+        // i.e., fecha_nacimiento <= fecha_contratacion - 18 years
+        const birthLimitAtHiring = (() => { const d = new Date(fc); d.setFullYear(d.getFullYear() - 18); return d })()
+        if (fn > birthLimitAtHiring) errs.fecha_nacimiento = 'Empleado debe tener al menos 18 años al momento de la contratación'
       }
     }
 
@@ -522,7 +574,7 @@ export default function EmpleadoForm() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de nacimiento</label>
-              <input type="date" min={minDate1900} max={birthMaxDate} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_nacimiento" value={model.fecha_nacimiento || ''} onChange={handleChange} />
+              <input type="date" min={minDate1900} max={getBirthMaxDate()} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_nacimiento" value={model.fecha_nacimiento || ''} onChange={handleChange} />
               {fieldErrors.fecha_nacimiento && <p className="text-sm text-red-600 mt-1">{fieldErrors.fecha_nacimiento}</p>}
             </div>
 

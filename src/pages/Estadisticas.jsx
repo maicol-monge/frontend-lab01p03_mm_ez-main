@@ -8,13 +8,13 @@ import {
   BarElement,
   PointElement,
   LineElement,
+  Filler,
   Title,
   Tooltip,
   Legend,
   ArcElement,
 } from 'chart.js'
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement)
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler, Title, Tooltip, Legend, ArcElement)
 
 function safeNumber(v) {
   const n = Number(v)
@@ -88,6 +88,14 @@ export default function Estadisticas() {
 
     out.evaluacion_promedio_por_departamento = Array.isArray(out.evaluacion_promedio_por_departamento) ? out.evaluacion_promedio_por_departamento.map(r => ({ departamento: r.departamento, promedio: safeNumber(r.promedio) })) : []
 
+    // Evolución del salario promedio por año (server-provided) -> [{ year, promedio }]
+    out.evolucion_salario_promedio_por_anio = Array.isArray(out.evolucion_salario_promedio_por_anio)
+      ? out.evolucion_salario_promedio_por_anio.map(r => ({ year: r.year, promedio: safeNumber(r.promedio) }))
+      : (Array.isArray(out.evolucion_salario_promedio_por_anio) ? out.evolucion_salario_promedio_por_anio : [])
+
+    // Promedio general del salario base entre todos los empleados activos
+    out.promedio_salario_base_general = Number.isFinite(Number(out.promedio_salario_base_general)) ? Number(out.promedio_salario_base_general) : null
+
     out.edad_promedio_directivo = safeNumber(out.edad_promedio_directivo)
     out.edad_promedio_operativo = safeNumber(out.edad_promedio_operativo)
     out.correlacion_salario_desempeno = safeNumber(out.correlacion_salario_desempeno)
@@ -101,6 +109,34 @@ export default function Estadisticas() {
 
     return out
   }, [stats])
+
+  // Reload handler to refresh stats and chart data on demand
+  const reloadStats = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await api.estadisticas()
+      setStats(data)
+    } catch (err) {
+      if (err && err.body && typeof err.body === 'object' && err.body.message) setError(String(err.body.message))
+      else if (err && err.status === 404 && err.body) setError(String(err.body))
+      else setError(err.message || String(err))
+    } finally {
+      setLoading(false)
+    }
+
+    // refresh employees used for charts as well
+    setChartsLoading(true)
+    try {
+      const list = await api.list({ per_page: 1000, with_inactive: true })
+      const arr = Array.isArray(list) ? list : (Array.isArray(list.data) ? list.data : [])
+      setEmployees(arr)
+    } catch (e) {
+      setEmployees([])
+    } finally {
+      setChartsLoading(false)
+    }
+  }
 
   if (loading) return <div className="page-container">Cargando estadísticas...</div>
   if (error) return <div className="page-container"><div className="rounded bg-red-50 text-red-700 p-3">{error}</div></div>
@@ -119,9 +155,14 @@ export default function Estadisticas() {
     .map(emp => ({ x: Number(emp.salario_base) || 0, y: Number(emp.evaluacion_desempeno) || 0 }))
 
   // Line: Evolución salario promedio por año (from employees.updated_at and salario_neto)
-  const seriesByYear = (() => {
-  const map = new Map();
-  ;(employees || []).forEach(emp => {
+  // Prefer server-provided series if available, otherwise derive from employees.updated_at
+  const serverSeries = (s && Array.isArray(s.evolucion_salario_promedio_por_anio) && s.evolucion_salario_promedio_por_anio.length)
+    ? s.evolucion_salario_promedio_por_anio.map(i => ({ year: i.year, avg: Number.isFinite(Number(i.promedio)) ? Number(i.promedio) : null }))
+    : null
+
+  const localSeries = (() => {
+    const map = new Map();
+    ;(employees || []).forEach(emp => {
       if (!emp || !emp.updated_at) return
       const d = new Date(emp.updated_at)
       if (isNaN(d.getTime())) return
@@ -138,6 +179,8 @@ export default function Estadisticas() {
     items.sort((a,b) => a.year - b.year)
     return items
   })()
+
+  const seriesByYear = serverSeries && serverSeries.length ? serverSeries : localSeries
 
   const lineLabels = seriesByYear.map(i => String(i.year))
   // round year averages to 2 decimals
@@ -240,7 +283,19 @@ export default function Estadisticas() {
 
   return (
     <div className="page-container">
-      <h2 className="mb-6 text-center text-2xl font-semibold">Estadísticas</h2>
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-semibold">Estadísticas</h2>
+        <div>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded border px-3 py-1 text-sm bg-white hover:bg-slate-50"
+            onClick={reloadStats}
+            disabled={loading || chartsLoading}
+          >
+            {loading || chartsLoading ? 'Recargando...' : 'Recargar estadísticas'}
+          </button>
+        </div>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <div className="card-surface text-center">
           <h5 className="text-sm text-slate-600">Total empleados</h5>
@@ -261,6 +316,10 @@ export default function Estadisticas() {
         <div className="card-surface text-center">
           <h5 className="text-sm text-slate-600">Total descuentos (mensual)</h5>
           <p className="text-2xl font-bold">{s.total_descuentos != null ? new Intl.NumberFormat('es-SV', { style: 'currency', currency: 'USD' }).format(s.total_descuentos) : 'N/A'}</p>
+        </div>
+        <div className="card-surface text-center">
+          <h5 className="text-sm text-slate-600">Promedio salario base (general)</h5>
+          <p className="text-2xl font-bold">{s.promedio_salario_base_general != null ? new Intl.NumberFormat('es-SV', { style: 'currency', currency: 'USD' }).format(s.promedio_salario_base_general) : 'N/A'}</p>
         </div>
         <div className="card-surface text-center">
           <h5 className="text-sm text-slate-600">Crecimiento salario neto (pct)</h5>

@@ -18,6 +18,7 @@ export default function EmpleadosList() {
   const [perPage, setPerPage] = useState(15)
   const [total, setTotal] = useState(0)
   const [lastPage, setLastPage] = useState(1)
+  const [isFullList, setIsFullList] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [filtroDepartamento, setFiltroDepartamento] = useState('')
@@ -135,22 +136,28 @@ export default function EmpleadosList() {
       const data = await api.list(params)
       // handle paginated response from Laravel (data.data)
       if (Array.isArray(data)) {
+        // API returned full array (not paginated)
         setEmpleados(data)
         setAllEmpleados(data)
         setTotal(data.length)
-        setLastPage(1)
+        setPerPage(perPage)
+        setLastPage(Math.max(1, Math.ceil(data.length / perPage)))
         setPage(1)
+        setIsFullList(true)
       } else if (data && Array.isArray(data.data)) {
+        // paginated response from server
         setEmpleados(data.data)
         setAllEmpleados(data.data)
         setTotal(data.total || 0)
         setPerPage(data.per_page || perPage)
         setLastPage(data.last_page || 1)
         setPage(data.current_page || 1)
+        setIsFullList(false)
       } else {
         // fallback
         setEmpleados(data)
         setAllEmpleados(data)
+        setIsFullList(Array.isArray(data))
       }
       setError(null)
     } catch (err) {
@@ -218,16 +225,32 @@ export default function EmpleadosList() {
         else res = res.filter(e => parseFloat(e.salario_base) < num)
       }
     }
-      // apply sorting by fecha_contratacion (default: desc = más recientes primero)
-      res.sort((a, b) => {
-        const ta = parseContratacionTime(a)
-        const tb = parseContratacionTime(b)
-        // treat missing dates as very old so they appear last when sorting desc
-        const vala = ta === null ? -8640000000000000 : ta
-        const valb = tb === null ? -8640000000000000 : tb
-        return sortOrder === 'desc' ? (valb - vala) : (vala - valb)
-      })
+    // apply sorting by fecha_contratacion (default: desc = más recientes primero)
+    res.sort((a, b) => {
+      const ta = parseContratacionTime(a)
+      const tb = parseContratacionTime(b)
+      // treat missing dates as very old so they appear last when sorting desc
+      const vala = ta === null ? -8640000000000000 : ta
+      const valb = tb === null ? -8640000000000000 : tb
+      return sortOrder === 'desc' ? (valb - vala) : (vala - valb)
+    })
+
+    if (isFullList) {
+      // perform client-side pagination (we have the full dataset)
+      const totalFiltered = res.length
+      const last = Math.max(1, Math.ceil(totalFiltered / perPage))
+      // ensure current page is within bounds
+      const currentPage = page > last ? 1 : page
+      const start = (currentPage - 1) * perPage
+      const pageSlice = res.slice(start, start + perPage)
+      setEmpleados(pageSlice)
+      setTotal(totalFiltered)
+      setLastPage(last)
+      if (currentPage !== page) setPage(currentPage)
+    } else {
+      // server-paginated: just show current (filtered) set; pagination info comes from server
       setEmpleados(res)
+    }
   }
 
   const clearFiltros = () => {
@@ -249,7 +272,7 @@ export default function EmpleadosList() {
   useEffect(() => {
     aplicarFiltros()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroDepartamento, filtroPuesto, filtroSexo, filtroEstado, filtroContratacionDesde, filtroContratacionHasta, monto, salarioComp, searchTerm, allEmpleados, sortOrder])
+  }, [filtroDepartamento, filtroPuesto, filtroSexo, filtroEstado, filtroContratacionDesde, filtroContratacionHasta, monto, salarioComp, searchTerm, allEmpleados, sortOrder, page, perPage, isFullList])
 
   return (
     <div className="page-container">
@@ -437,8 +460,22 @@ export default function EmpleadosList() {
       {/* pagination */}
       <div className="mt-4 flex items-center gap-2">
         <div>Page {page} / {lastPage} — Total: {total}</div>
-        <button className="rounded border px-2 py-1" disabled={page <= 1} onClick={() => load({ page: page - 1 })}>Anterior</button>
-        <button className="rounded border px-2 py-1" disabled={page >= lastPage} onClick={() => load({ page: page + 1 })}>Siguiente</button>
+        <button
+          className="rounded border px-2 py-1"
+          disabled={page <= 1}
+          onClick={() => {
+            if (isFullList) setPage(Math.max(1, page - 1))
+            else load({ page: page - 1 })
+          }}
+        >Anterior</button>
+        <button
+          className="rounded border px-2 py-1"
+          disabled={page >= lastPage}
+          onClick={() => {
+            if (isFullList) setPage(Math.min(lastPage, page + 1))
+            else load({ page: page + 1 })
+          }}
+        >Siguiente</button>
         <select className="ml-auto rounded border px-2 py-1" value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setPage(1); load({ page: 1 }) }}>
           <option value={10}>10</option>
           <option value={15}>15</option>

@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base tweaks that play nicely with Tailwind */
+:root {
+  --brand: #0ea5e9;
+  --header-height: 4rem;
+  /* matches header h-16 */
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 antialiased;
+}
+
+/* Utility for primary buttons used in several components */
+.btn-primary-tailwind {
+  @apply inline-flex items-center justify-center px-4 py-2 rounded-md bg-brand-600 text-white hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-300;
+}
+
+.card-surface {
+  /* slightly larger padding on md+ for better breathing room */
+  @apply bg-surface shadow-subtle rounded-lg p-4 md:p-6 border border-slate-100;
+}
+
+/* responsive container similar to bootstrap container-fluid px-4 mt-4 */
+.page-container {
+  /* use padding-top so fixed header doesn't overlap content; adjusts for mobile */
+  padding-top: calc(var(--header-height) + 1rem);
+  @apply max-w-6xl mx-auto px-4;
+}
+
+/* small table tweaks */
+.tg-table th,
+.tg-table td {
+  @apply px-3 py-2 border-b border-slate-200 text-sm;
+}
+
+/* dark mode support via .dark class (control with toggle) */
+.dark body {
+  background-color: #0f1724;
+  /* slate-900 */
+  color: #f8fafc;
+  /* slate-100 */
+}
+
+.dark .card-surface {
+  background-color: #0b1220;
+  /* a slightly darker surface */
+  border-color: #1f2937;
+  /* slate-700 */
+}
+
+.dark .btn-primary-tailwind {
+  background-color: #0ea5e9;
+  /* brand-500 */
+}
+
+/* small-screen table fallback: use cards on mobile for better readability */
+@media (max-width: 767px) {
+  .tg-table {
+    display: none;
+  }
+
+  .mobile-list {
+    display: block;
+  }
+}
+
+@media (min-width: 768px) {
+  .mobile-list {
+    display: none;
+  }
+}

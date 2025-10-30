@@ -12,8 +12,8 @@ function App() {
   return (
     <BrowserRouter>
       <Navbar />
-      <main className="pt-16 px-4">
-        <div className="max-w-6xl mx-auto">
+  <main className="pt-16 px-4 pb-12 min-h-[calc(100vh-4rem)]">
+   <div className="max-w-6xl mx-auto">
           <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/empleados" element={<EmpleadosList />} />

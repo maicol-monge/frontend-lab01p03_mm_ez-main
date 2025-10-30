@@ -136,10 +136,10 @@ export default function EmpleadosList() {
       </div>
 
       <div className="card-surface mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+  <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
-            <select className="block w-full md:w-60 rounded border-slate-200" value={filtroDepartamento} onChange={e => setFiltroDepartamento(e.target.value)}>
+            <select className="block w-full rounded border-slate-200" value={filtroDepartamento} onChange={e => setFiltroDepartamento(e.target.value)}>
               <option value="">--</option>
               {DEPARTAMENTOS.map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -149,7 +149,7 @@ export default function EmpleadosList() {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
-            <select className="block w-full md:w-60 rounded border-slate-200" value={filtroPuesto} onChange={e => setFiltroPuesto(e.target.value)}>
+            <select className="block w-full rounded border-slate-200" value={filtroPuesto} onChange={e => setFiltroPuesto(e.target.value)}>
               <option value="">--</option>
               {PUESTOS.map(p => (
                 <option key={p} value={p}>{p}</option>
@@ -159,7 +159,7 @@ export default function EmpleadosList() {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Estado</label>
-            <select className="block w-full md:w-60 rounded border-slate-200" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
+            <select className="block w-full rounded border-slate-200" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
               <option value="">--</option>
               {SEXOS.map(s => (
                 <option key={s.value} value={s.value}>{s.label}</option>
@@ -167,10 +167,10 @@ export default function EmpleadosList() {
             </select>
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium text-slate-700 mb-1">Salario monto</label>
             <div className="flex gap-2">
-              <select className="rounded border-slate-200 w-28 md:w-36" value={salarioComp} onChange={e => setSalarioComp(e.target.value)}>
+              <select className="rounded border-slate-200 w-28" value={salarioComp} onChange={e => setSalarioComp(e.target.value)}>
                 <option value=">">mayor que</option>
                 <option value="<">menor que</option>
               </select>
@@ -178,10 +178,10 @@ export default function EmpleadosList() {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 w-full md:col-span-1 md:justify-end items-center">
             <button className="btn-primary-tailwind" onClick={() => load({ with_inactive: false, page: 1 })}>Aplicar filtros</button>
             <button className="rounded border border-slate-200 px-3 py-2 text-sm text-slate-700" onClick={clearFiltros}>Limpiar</button>
-            <button className="ml-auto rounded border border-red-400 px-3 py-2 text-sm text-red-700" onClick={() => load({ with_inactive: true })}>Recargar (incluye inactivos)</button>
+            <button className="rounded border border-red-400 px-3 py-2 text-sm text-red-700" onClick={() => load({ with_inactive: true })}>Recargar (incluye inactivos)</button>
           </div>
         </div>
       </div>

@@ -19,4 +19,8 @@ export const SEXOS = [
   { value: 'O', label: 'Otro' },
 ]
 
+export const ESTADOS = [
+  { value: '1', label: 'Activo' },
+  { value: '0', label: 'Inactivo' },
+]
 export default PUESTOS

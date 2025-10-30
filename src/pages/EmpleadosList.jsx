@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../services/api'
-import { PUESTOS, DEPARTAMENTOS, SEXOS } from '../constants'
+import { PUESTOS, DEPARTAMENTOS, SEXOS, ESTADOS } from '../constants'
 
 export default function EmpleadosList() {
+  // normalize estado values for comparison and for API params
+  const normalizeEstado = (v) => {
+    if (v === null || v === undefined || v === '') return ''
+    if (typeof v === 'boolean') return v ? '1' : '0'
+    // numbers -> '1' or '0'
+    if (typeof v === 'number') return String(v)
+    return String(v).trim()
+  }
   const [empleados, setEmpleados] = useState([])
   const [allEmpleados, setAllEmpleados] = useState([])
   const [page, setPage] = useState(1)
@@ -14,6 +22,7 @@ export default function EmpleadosList() {
   const [error, setError] = useState(null)
   const [filtroDepartamento, setFiltroDepartamento] = useState('')
   const [filtroPuesto, setFiltroPuesto] = useState('')
+  const [filtroSexo, setFiltroSexo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [monto, setMonto] = useState('')
   const [salarioComp, setSalarioComp] = useState('>')
@@ -22,11 +31,14 @@ export default function EmpleadosList() {
   const load = async (opts = {}) => {
     setLoading(true)
     try {
+      const normalizedEstado = normalizeEstado(filtroEstado)
+      const sexoParam = (filtroSexo && filtroSexo !== '') ? filtroSexo : undefined
       const params = {
         per_page: perPage,
         departamento: filtroDepartamento || undefined,
         puesto: filtroPuesto || undefined,
-        sexo: filtroEstado || undefined,
+        sexo: sexoParam,
+        estado: normalizedEstado !== '' ? (normalizedEstado === '1' ? 1 : (normalizedEstado === '0' ? 0 : normalizedEstado)) : undefined,
         with_inactive: opts.with_inactive ? true : undefined,
         page: opts.page || page,
       }
@@ -82,7 +94,11 @@ export default function EmpleadosList() {
     }
   if (filtroDepartamento) res = res.filter(e => e.departamento === filtroDepartamento)
   if (filtroPuesto) res = res.filter(e => e.puesto === filtroPuesto)
-  if (filtroEstado) res = res.filter(e => String(e.sexo || '').toLowerCase() === filtroEstado.toLowerCase())
+  if (filtroSexo) res = res.filter(e => String(e.sexo || '').toLowerCase() === String(filtroSexo).toLowerCase())
+  if (filtroEstado) {
+    const nf = normalizeEstado(filtroEstado)
+    res = res.filter(e => normalizeEstado(e.estado) === nf)
+  }
     if (monto) {
       const num = parseFloat(monto)
       if (!Number.isNaN(num)) {
@@ -96,6 +112,7 @@ export default function EmpleadosList() {
   const clearFiltros = () => {
     setFiltroDepartamento('')
     setFiltroPuesto('')
+    setFiltroSexo('')
     setFiltroEstado('')
     setMonto('')
     setSalarioComp('>')
@@ -109,7 +126,7 @@ export default function EmpleadosList() {
   useEffect(() => {
     aplicarFiltros()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroDepartamento, filtroPuesto, filtroEstado, monto, salarioComp, searchTerm, allEmpleados])
+  }, [filtroDepartamento, filtroPuesto, filtroSexo, filtroEstado, monto, salarioComp, searchTerm, allEmpleados])
 
   return (
     <div className="page-container">
@@ -158,10 +175,20 @@ export default function EmpleadosList() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Sexo</label>
+            <select className="block w-full rounded border-slate-200" value={filtroSexo} onChange={e => setFiltroSexo(e.target.value)}>
+              <option value="">--</option>
+              {SEXOS.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Estado</label>
             <select className="block w-full rounded border-slate-200" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
               <option value="">--</option>
-              {SEXOS.map(s => (
+              {ESTADOS.map(s => (
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>

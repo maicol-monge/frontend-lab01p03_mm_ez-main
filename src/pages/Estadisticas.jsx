@@ -44,14 +44,17 @@ export default function Estadisticas() {
     })()
   }, [])
 
-  // fetch employees to build scatter and time series charts
+  // fetch employees to build scatter and time series charts and to compute totals
+  // NOTE: we fetch a large page (per_page=1000) as a pragmatic client-side fallback
+  // when the backend doesn't provide direct totals. Prefer a dedicated /estadisticas
+  // endpoint on the server for large datasets or pagination-heavy apps.
   useEffect(() => {
     let mounted = true
     ;(async () => {
       setChartsLoading(true)
-    try {
-      // try to fetch many employees but only activos for charts
-      const list = await api.list({ per_page: 1000, estado: 1 })
+      try {
+        // fetch many employees (no estado filter) so we can compute totals (activos/inactivos)
+        const list = await api.list({ per_page: 1000 })
         // api.list may return an array or paginated object; normalize to array
         const arr = Array.isArray(list) ? list : (Array.isArray(list.data) ? list.data : [])
         if (mounted) setEmployees(arr)
@@ -143,6 +146,16 @@ export default function Estadisticas() {
   const estadoLabels = Object.keys(s.distribucion_sexo_map || {})
   const estadoValues = estadoLabels.map(k => s.distribucion_sexo_map[k] || 0)
 
+  // compute totals: prefer server-provided totals when available in `stats`,
+  // otherwise derive from the fetched `employees` array as a fallback.
+  const totalFromStats = (s && (s.total_empleados || s.total || s.total_personal)) || null
+  const activosFromStats = (s && (s.total_activos || s.activos || s.total_activos_mensuales)) || null
+  const inactivosFromStats = (s && (s.total_inactivos || s.inactivos)) || null
+
+  const totalEmployees = totalFromStats != null ? Number(totalFromStats) : (Array.isArray(employees) ? employees.length : 0)
+  const activosCount = activosFromStats != null ? Number(activosFromStats) : (Array.isArray(employees) ? employees.filter(e => e && (e.estado === 1 || String(e.estado) === '1')).length : 0)
+  const inactivosCount = inactivosFromStats != null ? Number(inactivosFromStats) : (Number.isFinite(Number(totalEmployees)) ? (Number(totalEmployees) - Number(activosCount)) : null)
+
   // totals for distribution percentages
   const totalDistribucion = estadoValues.reduce((a,b) => a + b, 0) || 0
   const distribucionPercent = estadoLabels.map(k => {
@@ -229,6 +242,18 @@ export default function Estadisticas() {
     <div className="page-container">
       <h2 className="mb-6 text-center text-2xl font-semibold">Estadísticas</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="card-surface text-center">
+          <h5 className="text-sm text-slate-600">Total empleados</h5>
+          <p className="text-2xl font-bold">{Number.isFinite(Number(totalEmployees)) ? String(totalEmployees) : 'N/A'}</p>
+        </div>
+        <div className="card-surface text-center">
+          <h5 className="text-sm text-slate-600">Empleados activos</h5>
+          <p className="text-2xl font-bold">{Number.isFinite(Number(activosCount)) ? String(activosCount) : 'N/A'}</p>
+        </div>
+        <div className="card-surface text-center">
+          <h5 className="text-sm text-slate-600">Empleados inactivos</h5>
+          <p className="text-2xl font-bold">{Number.isFinite(Number(inactivosCount)) ? String(inactivosCount) : 'N/A'}</p>
+        </div>
         <div className="card-surface text-center">
           <h5 className="text-sm text-slate-600">Total bonificaciones (mensual)</h5>
           <p className="text-2xl font-bold">{s.total_bonificaciones != null ? new Intl.NumberFormat('es-SV', { style: 'currency', currency: 'USD' }).format(s.total_bonificaciones) : 'N/A'}</p>

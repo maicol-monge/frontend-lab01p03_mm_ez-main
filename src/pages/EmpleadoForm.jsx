@@ -69,10 +69,30 @@ export default function EmpleadoForm() {
     if (id) {
       (async () => {
         try {
-          const data = await api.get(id)
+          // request the employee even if it's inactive. Backend supports `with_inactive` query param.
+          const data = await api.get(id, { with_inactive: true })
           // normalize to our form shape
           setModel(prev => ({ ...prev, ...data }))
         } catch (err) {
+          // If backend returns 404 for inactive employees, try a client-side fallback:
+          // fetch a larger list including inactive and find the record by id.
+          try {
+            const status = err && err.status
+            const bodyMsg = err && err.body && (err.body.message || JSON.stringify(err.body))
+            const isInactive404 = status === 404 && bodyMsg && /no activo/i.test(String(bodyMsg))
+            if (isInactive404) {
+              const list = await api.list({ per_page: 1000, with_inactive: true })
+              const arr = Array.isArray(list) ? list : (Array.isArray(list.data) ? list.data : [])
+              const found = arr.find(it => String(it.id || it.id_empleado) === String(id))
+              if (found) {
+                setModel(prev => ({ ...prev, ...found }))
+                setError(null)
+                return
+              }
+            }
+          } catch (e) {
+            // ignore fallback errors, fall through to show original error
+          }
           setError(formatErrorForBanner(err))
         }
       })()

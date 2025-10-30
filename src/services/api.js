@@ -70,8 +70,9 @@ export const api = {
     if (data && Array.isArray(data.data)) return data.data.map(item => api._normalizeEmpleado(item))
     return data
   },
-  get: async (id) => {
-    const data = await request(buildUrl(String(id)))
+  // get a resource by id. Optional `params` will be appended as query string
+  get: async (id, params = null) => {
+    const data = await request(buildUrl(String(id), params))
     return api._normalizeEmpleado(data)
   },
   create: (body) => request(buildUrl(''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
@@ -102,7 +103,8 @@ export const api = {
       }
     }
   },
-  calculos: (id) => request(buildUrl(`${String(id)}/calculos`)),
+  // calculos may accept params (for example { with_inactive: true })
+  calculos: (id, params = null) => request(buildUrl(`${String(id)}/calculos`, params)),
 }
 
 export default api

@@ -36,11 +36,41 @@ export default function EmpleadoDetalle() {
   const load = async () => {
     setLoading(true)
     try {
-      const res = await api.calculos(id)
+      // request cálculos even for inactive employees
+      const res = await api.calculos(id, { with_inactive: true })
       setData(res)
       setError(null)
     } catch (err) {
       // api.request produces Error with .status and .body sometimes
+      // If server refuses calculos because the empleado is inactive, try a fallback:
+      // fetch the resource from the list (including inactive) or via get with with_inactive
+      try {
+        const status = err && err.status
+        const bodyMsg = err && err.body && (err.body.message || JSON.stringify(err.body))
+        const isInactive404 = status === 404 && bodyMsg && /no activo/i.test(String(bodyMsg))
+        if (isInactive404) {
+          // first try direct get with with_inactive
+          try {
+            const getRes = await api.get(id, { with_inactive: true })
+            setData(getRes)
+            setError(null)
+            return
+          } catch (_) {
+            // if get also fails, try list fallback
+          }
+          try {
+            const list = await api.list({ per_page: 1000, with_inactive: true })
+            const arr = Array.isArray(list) ? list : (Array.isArray(list.data) ? list.data : [])
+            const found = arr.find(it => String(it.id || it.id_empleado) === String(id))
+            if (found) {
+              setData(found)
+              setError(null)
+              return
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+
       const msg = (err && (err.message || (err.body && JSON.stringify(err.body)) || err)) || 'Error cargando datos'
       setError(msg)
     } finally {

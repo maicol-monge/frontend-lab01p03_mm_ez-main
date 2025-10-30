@@ -12,6 +12,7 @@ export default function EmpleadosList() {
   const [lastPage, setLastPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [filtroDepartamento, setFiltroDepartamento] = useState('')
   const [filtroPuesto, setFiltroPuesto] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [monto, setMonto] = useState('')
@@ -23,7 +24,8 @@ export default function EmpleadosList() {
     try {
       const params = {
         per_page: perPage,
-        departamento: filtroPuesto || undefined,
+        departamento: filtroDepartamento || undefined,
+        puesto: filtroPuesto || undefined,
         sexo: filtroEstado || undefined,
         with_inactive: opts.with_inactive ? true : undefined,
         page: opts.page || page,
@@ -78,7 +80,8 @@ export default function EmpleadosList() {
         )
       })
     }
-  if (filtroPuesto) res = res.filter(e => e.departamento === filtroPuesto || e.puesto === filtroPuesto)
+  if (filtroDepartamento) res = res.filter(e => e.departamento === filtroDepartamento)
+  if (filtroPuesto) res = res.filter(e => e.puesto === filtroPuesto)
   if (filtroEstado) res = res.filter(e => String(e.sexo || '').toLowerCase() === filtroEstado.toLowerCase())
     if (monto) {
       const num = parseFloat(monto)
@@ -91,6 +94,7 @@ export default function EmpleadosList() {
   }
 
   const clearFiltros = () => {
+    setFiltroDepartamento('')
     setFiltroPuesto('')
     setFiltroEstado('')
     setMonto('')
@@ -105,7 +109,7 @@ export default function EmpleadosList() {
   useEffect(() => {
     aplicarFiltros()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroPuesto, filtroEstado, monto, salarioComp, searchTerm, allEmpleados])
+  }, [filtroDepartamento, filtroPuesto, filtroEstado, monto, salarioComp, searchTerm, allEmpleados])
 
   return (
     <div className="page-container">
@@ -134,18 +138,22 @@ export default function EmpleadosList() {
       <div className="card-surface mb-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
-            <select className="block w-full md:w-60 rounded border-slate-200" value={filtroPuesto} onChange={e => setFiltroPuesto(e.target.value)}>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
+            <select className="block w-full md:w-60 rounded border-slate-200" value={filtroDepartamento} onChange={e => setFiltroDepartamento(e.target.value)}>
               <option value="">--</option>
-              <option value="">--Departamento/Puesto--</option>
               {DEPARTAMENTOS.map(d => (
                 <option key={d} value={d}>{d}</option>
               ))}
-              <optgroup label="Puestos">
-                {PUESTOS.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </optgroup>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
+            <select className="block w-full md:w-60 rounded border-slate-200" value={filtroPuesto} onChange={e => setFiltroPuesto(e.target.value)}>
+              <option value="">--</option>
+              {PUESTOS.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
             </select>
           </div>
 

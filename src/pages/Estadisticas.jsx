@@ -53,8 +53,8 @@ export default function Estadisticas() {
     ;(async () => {
       setChartsLoading(true)
       try {
-        // fetch many employees (no estado filter) so we can compute totals (activos/inactivos)
-        const list = await api.list({ per_page: 1000 })
+  // fetch many employees including inactivos so we can compute totals (activos/inactivos)
+  const list = await api.list({ per_page: 1000, with_inactive: true })
         // api.list may return an array or paginated object; normalize to array
         const arr = Array.isArray(list) ? list : (Array.isArray(list.data) ? list.data : [])
         if (mounted) setEmployees(arr)

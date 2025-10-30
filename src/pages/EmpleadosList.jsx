@@ -152,11 +152,11 @@ export default function EmpleadosList() {
         </div>
       </div>
 
-      <div className="card-surface mb-4">
-  <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
-            <select className="block w-full rounded border-slate-200" value={filtroDepartamento} onChange={e => setFiltroDepartamento(e.target.value)}>
+          <div className="card-surface mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
+                <select className="block w-full rounded border-slate-200" value={filtroDepartamento} onChange={e => setFiltroDepartamento(e.target.value)}>
               <option value="">--</option>
               {DEPARTAMENTOS.map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -164,7 +164,7 @@ export default function EmpleadosList() {
             </select>
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
             <select className="block w-full rounded border-slate-200" value={filtroPuesto} onChange={e => setFiltroPuesto(e.target.value)}>
               <option value="">--</option>
@@ -174,7 +174,7 @@ export default function EmpleadosList() {
             </select>
           </div>
 
-          <div>
+          <div className="md:col-span-1">
             <label className="block text-sm font-medium text-slate-700 mb-1">Sexo</label>
             <select className="block w-full rounded border-slate-200" value={filtroSexo} onChange={e => setFiltroSexo(e.target.value)}>
               <option value="">--</option>
@@ -184,7 +184,7 @@ export default function EmpleadosList() {
             </select>
           </div>
 
-          <div>
+          <div className="md:col-span-1">
             <label className="block text-sm font-medium text-slate-700 mb-1">Estado</label>
             <select className="block w-full rounded border-slate-200" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
               <option value="">--</option>
@@ -201,15 +201,16 @@ export default function EmpleadosList() {
                 <option value=">">mayor que</option>
                 <option value="<">menor que</option>
               </select>
-              <input className="flex-1 rounded border-slate-200 px-2" value={monto} onChange={e => setMonto(e.target.value)} placeholder="1000.00" />
+              <input className="w-28 md:w-40 rounded border-slate-200 px-2" value={monto} onChange={e => setMonto(e.target.value)} placeholder="1000.00" />
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 w-full md:col-span-1 md:justify-end items-center">
-            <button className="btn-primary-tailwind" onClick={() => load({ with_inactive: false, page: 1 })}>Aplicar filtros</button>
-            <button className="rounded border border-slate-200 px-3 py-2 text-sm text-slate-700" onClick={clearFiltros}>Limpiar</button>
-            <button className="rounded border border-red-400 px-3 py-2 text-sm text-red-700" onClick={() => load({ with_inactive: true })}>Recargar (incluye inactivos)</button>
-          </div>
+          {/* Buttons moved out below to a separate row so inputs (especialmente salario) nunca se solapen */}
+        </div>
+        <div className="mt-3 flex flex-wrap md:flex-nowrap justify-end gap-2">
+          <button className="btn-primary-tailwind whitespace-nowrap" onClick={() => load({ with_inactive: false, page: 1 })}>Aplicar filtros</button>
+          <button className="rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 whitespace-nowrap" onClick={clearFiltros}>Limpiar</button>
+          <button className="rounded border border-red-400 px-3 py-2 text-sm text-red-700 whitespace-nowrap" onClick={() => load({ with_inactive: true })}>Recargar (incluye inactivos)</button>
         </div>
       </div>
 

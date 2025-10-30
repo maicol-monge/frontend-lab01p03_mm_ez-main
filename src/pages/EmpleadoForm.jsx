@@ -1,19 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../services/api'
-import { PUESTOS } from '../constants'
+import { PUESTOS, DEPARTAMENTOS, SEXOS } from '../constants'
 
 const empty = {
   nombre: '',
-  apellido: '',
+  departamento: '',
+  puesto: '',
+  salario_base: '',
+  bonificacion: '',
+  descuento: '',
   dui: '',
   telefono: '',
   correo: '',
-  direccion: '',
   fecha_contratacion: '',
-  puesto: '',
-  salario: '',
-  estado: 'Activo'
+  fecha_nacimiento: '',
+  sexo: 'M',
+  evaluacion_desempeno: null,
+  estado: 1,
 }
 
 export default function EmpleadoForm() {
@@ -23,7 +27,7 @@ export default function EmpleadoForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
-  const duiRef = useRef(null)
+  // no DUI/telefono fields in the current model
 
   // Format server-side messages into a concise, user-friendly banner string
   const formatErrorForBanner = (raw) => {
@@ -42,7 +46,15 @@ export default function EmpleadoForm() {
       try {
         const m = txt.match(/(\{[\s\S]*\})/)
         const j = m ? JSON.parse(m[1]) : JSON.parse(txt)
-        if (j) return j.message || j.error || (j.dui ? `DUI already exists: ${j.dui}` : JSON.stringify(j))
+        if (j) {
+          // prefer message, else try common field hints
+          if (j.message) return j.message
+          if (j.error) return j.error
+          if (j.salario_base) return `Salario base inválido: ${j.salario_base}`
+          if (j.departamento) return `Departamento: ${j.departamento}`
+          if (j.puesto) return `Puesto: ${j.puesto}`
+          return JSON.stringify(j)
+        }
       } catch (_) {
         // not JSON, continue
       }
@@ -58,7 +70,8 @@ export default function EmpleadoForm() {
       (async () => {
         try {
           const data = await api.get(id)
-          setModel(data)
+          // normalize to our form shape
+          setModel(prev => ({ ...prev, ...data }))
         } catch (err) {
           setError(formatErrorForBanner(err))
         }
@@ -66,82 +79,205 @@ export default function EmpleadoForm() {
     }
   }, [id])
 
+  // Helpers: El Salvador timezone adjustments and date boundaries
+  const esNow = () => {
+    const now = new Date()
+    // El Salvador is UTC-6
+    const ms = now.getTime() - (6 * 60 * 60 * 1000)
+    return new Date(ms)
+  }
+  const toDateInput = (d) => d.toISOString().slice(0,10)
+  const minDate1900 = '1900-01-01'
+  // birth max: today - 18 years (must be at least 18 years old)
+  const birthMaxDate = (() => {
+    const n = esNow()
+    n.setFullYear(n.getFullYear() - 18)
+    return toDateInput(n)
+  })()
+  // contratacion max: today minus recentDays (prevent dates too close to now)
+  const RECENT_DAYS_BLOCK = 2 // assumption: contratación cannot be within the last 2 days
+  const contratacionMaxDate = (() => {
+    const n = esNow()
+    n.setDate(n.getDate() - RECENT_DAYS_BLOCK)
+    return toDateInput(n)
+  })()
+
+  // Async uniqueness check (best-effort): use api.list with a search param and look for exact matches
+  const checkUnique = async (field) => {
+    try {
+      const rawValue = String(model[field] || '').trim()
+      const value = normalizeDigits(rawValue)
+      if (!value) return
+      // best-effort search; backend must return these fields in list for this to work
+      const res = await api.list({ per_page: 50, search: value })
+      const arr = Array.isArray(res) ? res : (Array.isArray(res.data) ? res.data : [])
+      const found = arr.find(item => {
+        if (!item || !item[field]) return false
+        // compare normalized digits to tolerate masked/unmasked variants
+        return normalizeDigits(item[field]) === value
+      })
+      if (found && String(found.id || found.id_empleado || '') !== String(id || '')) {
+        setFieldErrors(prev => ({ ...prev, [field]: `${field} ya está en uso` }))
+      }
+    } catch (e) {
+      // ignore check failures; server will validate on submit
+    }
+  }
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setModel(prev => ({ ...prev, [name]: value }))
     setFieldErrors(prev => { const c = { ...prev }; delete c[name]; return c })
   }
 
+  // Format numeric-like fields to 2 decimals on blur (keeps string representation in inputs)
+  const formatNumericField = (name) => {
+    const v = model[name]
+    if (v === '' || v === null || v === undefined) return
+    const s = String(v).replace(/,/g, '').trim()
+    if (s === '') return
+    const n = Number(s)
+    if (Number.isNaN(n)) return
+    // keep two decimals for money, one decimal for evaluacion_desempeno per spec
+    const fixed = name === 'evaluacion_desempeno' ? n.toFixed(1) : n.toFixed(2)
+    setModel(prev => ({ ...prev, [name]: fixed }))
+  }
+
+  // --- Masks and helpers for DUI and Telefono ---
+  const normalizeDigits = (s) => String(s || '').replace(/\D/g, '')
+
+  const formatDui = (raw) => {
+    const d = normalizeDigits(raw)
+    // expect 9 digits (8 + 1 check) or more; format as 8digits-1digit if available
+    if (!d) return ''
+    const left = d.slice(0, 8)
+    const right = d.slice(8, 9)
+    return right ? `${left}-${right}` : left
+  }
+
+  const formatTelefono = (raw) => {
+    const d = normalizeDigits(raw)
+    if (!d) return ''
+    // format as 4-4 (xxxx-xxxx). If more digits, append after second group
+    const a = d.slice(0,4)
+    const b = d.slice(4,8)
+    return b ? `${a}-${b}` : a
+  }
+
+  // specialized change handlers keep only digits while typing but keep user-friendly dash placement
   const handleDuiChange = (e) => {
-    let digits = String(e.target.value).replace(/\D/g, '')
-    if (digits.length > 9) digits = digits.slice(0, 9)
-    let formatted = digits
-    if (digits.length > 8) formatted = digits.slice(0, 8) + '-' + digits.slice(8)
-    setModel({ ...model, dui: formatted })
+    const raw = e.target.value || ''
+    const digits = normalizeDigits(raw).slice(0,9) // limit to 9 digits
+    // show intermediate formatting
+    const formatted = formatDui(digits)
+    setModel(prev => ({ ...prev, dui: formatted }))
     setFieldErrors(prev => { const c = { ...prev }; delete c.dui; return c })
   }
 
-
-  const handlePhoneChange = (e) => {
-    // Expect user to type only the rest after the '503-' prefix.
-    let digits = String(e.target.value).replace(/\D/g, '')
-    if (digits.length > 8) digits = digits.slice(0, 8)
-    // format as 4-4
-    let formattedRest = digits
-    if (digits.length > 4) formattedRest = digits.slice(0, 4) + '-' + digits.slice(4)
-    const full = formattedRest ? `503-${formattedRest}` : '503-'
-    setModel({ ...model, telefono: full })
+  const handleTelefonoChange = (e) => {
+    const raw = e.target.value || ''
+    const digits = normalizeDigits(raw).slice(0,20) // allow longer but typical 8
+    const formatted = formatTelefono(digits)
+    setModel(prev => ({ ...prev, telefono: formatted }))
     setFieldErrors(prev => { const c = { ...prev }; delete c.telefono; return c })
   }
 
-  const handleEmailChange = (e) => {
-    setModel({ ...model, correo: e.target.value })
-    setFieldErrors(prev => { const c = { ...prev }; delete c.correo; return c })
+  const handleDuiBlur = async () => {
+    setModel(prev => ({ ...prev, dui: formatDui(prev.dui) }))
+    await checkUnique('dui')
   }
+
+  const handleTelefonoBlur = async () => {
+    setModel(prev => ({ ...prev, telefono: formatTelefono(prev.telefono) }))
+    await checkUnique('telefono')
+  }
+
+  
 
   const submit = async (e) => {
     e.preventDefault()
-    // basic validation: no field can be empty
+    // enhanced validation according to provided schema
     const errs = {}
-    if (!model.nombre) errs.nombre = 'Nombre es obligatorio'
-    if (!model.apellido) errs.apellido = 'Apellido es obligatorio'
-    if (!model.dui) errs.dui = 'DUI es obligatorio'
-    if (!model.telefono) errs.telefono = 'Teléfono es obligatorio'
-    if (!model.correo) errs.correo = 'Correo es obligatorio'
-    if (!model.direccion) errs.direccion = 'Dirección es obligatoria'
+    // nombre: required, max 100
+    if (!model.nombre || String(model.nombre).trim() === '') errs.nombre = 'Nombre es obligatorio'
+    else if (String(model.nombre).trim().length > 100) errs.nombre = 'Nombre debe tener máximo 100 caracteres'
+
+    // departamento: required, max 50
+    if (!model.departamento || String(model.departamento).trim() === '') errs.departamento = 'Departamento es obligatorio'
+    else if (String(model.departamento).trim().length > 50) errs.departamento = 'Departamento debe tener máximo 50 caracteres'
+
+    // puesto: required, max 50
+    if (!model.puesto || String(model.puesto).trim() === '') errs.puesto = 'Puesto es obligatorio'
+    else if (String(model.puesto).trim().length > 50) errs.puesto = 'Puesto debe tener máximo 50 caracteres'
+
+    // salario_base: required, decimal >= 0
+    if (model.salario_base === '' || model.salario_base === null || model.salario_base === undefined) errs.salario_base = 'Salario base es obligatorio'
+    else {
+      const num = Number(String(model.salario_base).replace(/,/g, ''))
+      if (Number.isNaN(num)) errs.salario_base = 'Salario base debe ser un número'
+      else if (num < 0) errs.salario_base = 'Salario base debe ser mayor o igual a 0'
+      else if (Math.abs(Number((num * 100).toFixed(0)) - num * 100) > 0) errs.salario_base = 'Salario base admite hasta 2 decimales'
+    }
+
+    // dates: required and coherent
     if (!model.fecha_contratacion) errs.fecha_contratacion = 'Fecha de contratación es obligatoria'
-    if (!model.puesto) errs.puesto = 'Puesto es obligatorio'
-    if (model.salario === '' || model.salario === null || model.salario === undefined) errs.salario = 'Salario es obligatorio'
-
-    // format validations
-    const duiRe = /^\d{8}-\d$/
-    if (model.dui && !duiRe.test(model.dui)) errs.dui = 'Formato DUI inválido. Debe ser xxxxxxxx-x'
-
-    const phoneRe = /^503-\d{4}-\d{4}$/
-    if (model.telefono && !phoneRe.test(model.telefono)) errs.telefono = 'Teléfono inválido. Debe ser 503-xxxx-xxxx'
-
-    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (model.correo && !emailRe.test(model.correo)) errs.correo = 'Correo inválido'
-
-    // date must be past or today in El Salvador (UTC-6)
-    if (model.fecha_contratacion) {
-      const selected = model.fecha_contratacion // 'YYYY-MM-DD'
-      const todayES = (() => {
-        const now = new Date()
-        // shift to UTC-6
-        const esMs = now.getTime() - (6 * 60 * 60 * 1000)
-        const es = new Date(esMs)
-        return es.toISOString().slice(0,10)
-      })()
-      if (selected > todayES) errs.fecha_contratacion = 'La fecha debe ser hoy o anterior (zona UTC-6)'
+    if (!model.fecha_nacimiento) errs.fecha_nacimiento = 'Fecha de nacimiento es obligatoria'
+    if (model.fecha_nacimiento && model.fecha_contratacion) {
+      const fn = new Date(model.fecha_nacimiento)
+      const fc = new Date(model.fecha_contratacion)
+      const today = new Date()
+      if (isNaN(fn.getTime())) errs.fecha_nacimiento = 'Fecha de nacimiento inválida'
+      if (isNaN(fc.getTime())) errs.fecha_contratacion = 'Fecha de contratación inválida'
+      if (!errs.fecha_nacimiento && !errs.fecha_contratacion) {
+        // Use El Salvador timezone semantics for "today"
+        const esToday = esNow()
+        if (fn > esToday) errs.fecha_nacimiento = 'Fecha de nacimiento no puede ser en el futuro'
+        // prevent contratación very recent (within RECENT_DAYS_BLOCK)
+        const contratacionLimit = (() => { const d = esNow(); d.setDate(d.getDate() - RECENT_DAYS_BLOCK); return d })()
+        if (fc > esToday) errs.fecha_contratacion = 'Fecha de contratación no puede ser en el futuro'
+        if (fc > contratacionLimit) errs.fecha_contratacion = `Fecha de contratación no puede estar dentro de los últimos ${RECENT_DAYS_BLOCK} días`
+        if (fc < fn) errs.fecha_contratacion = 'Fecha de contratación no puede ser anterior a la fecha de nacimiento'
+        // birth must be at least 18 years before esToday
+        const birthLimit = (() => { const d = esNow(); d.setFullYear(d.getFullYear() - 18); return d })()
+        if (fn > birthLimit) errs.fecha_nacimiento = 'Empleado debe ser mayor de 18 años'
+      }
     }
 
-    // salario numeric
-    if (model.salario !== '' && model.salario !== null && model.salario !== undefined) {
-      const num = Number(String(model.salario).toString().replace(/,/g, ''))
-      if (Number.isNaN(num)) errs.salario = 'Salario debe ser un número'
-      else if (num < 0) errs.salario = 'Salario inválido'
+    // sexo: required and must be one of allowed
+    const allowedSex = ['M','F','O']
+    if (!model.sexo) errs.sexo = 'Sexo es obligatorio'
+    else if (!allowedSex.includes(String(model.sexo))) errs.sexo = 'Sexo inválido'
+
+    // numeric fields: bonificacion, descuento (required, non-negative, max 2 decimals)
+    ['bonificacion','descuento'].forEach(k => {
+      if (model[k] === '' || model[k] === null || model[k] === undefined) errs[k] = `${k} es obligatorio`
+      else {
+        const num = Number(String(model[k]).replace(/,/g, ''))
+        if (Number.isNaN(num)) errs[k] = `${k} debe ser numérico`
+        else if (num < 0) errs[k] = `${k} debe ser mayor o igual a 0`
+        else if (Math.abs(Number((num * 100).toFixed(0)) - num * 100) > 0) errs[k] = `${k} admite hasta 2 decimales`
+      }
+    })
+
+    // evaluacion_desempeno: required, 0..100, allow one decimal (5,1)
+    if (model.evaluacion_desempeno === '' || model.evaluacion_desempeno === null || model.evaluacion_desempeno === undefined) {
+      errs.evaluacion_desempeno = 'Evaluación es obligatoria'
+    } else {
+      const num = Number(String(model.evaluacion_desempeno).replace(/,/g, ''))
+      if (Number.isNaN(num)) errs.evaluacion_desempeno = 'Evaluación debe ser numérica'
+      else if (num < 0 || num > 100) errs.evaluacion_desempeno = 'Evaluación debe estar entre 0 y 100'
+      else {
+        // enforce 1 decimal place
+        const fixed1 = Math.round(num * 10) / 10
+        if (Math.abs(num - fixed1) > 1e-8) errs.evaluacion_desempeno = 'Evaluación admite una sola cifra decimal'
+      }
     }
+
+    // DUI, teléfono y correo: required and basic formats
+    if (!model.dui || String(model.dui).trim() === '') errs.dui = 'DUI es obligatorio'
+    if (!model.telefono || String(model.telefono).trim() === '') errs.telefono = 'Teléfono es obligatorio'
+    if (!model.correo || String(model.correo).trim() === '') errs.correo = 'Correo es obligatorio'
+    if (model.correo && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(model.correo))) errs.correo = 'Correo inválido'
 
     setFieldErrors(errs)
     if (Object.keys(errs).length) {
@@ -179,19 +315,24 @@ export default function EmpleadoForm() {
           const normalizeField = (k) => {
             if (!k) return null
             const s = String(k).toLowerCase()
-            if (s.includes('dui')) return 'dui'
+            if (s.includes('salario')) return 'salario_base'
+            if (s.includes('depart')) return 'departamento'
+            if (s.includes('puesto')) return 'puesto'
+            if (s.includes('sexo')) return 'sexo'
+            if (s.includes('evalu') || s.includes('desempeno')) return 'evaluacion_desempeno'
             if (s.includes('email') || s.includes('correo') || s.includes('mail')) return 'correo'
             if (s.includes('phone') || s.includes('telefono') || s.includes('tel')) return 'telefono'
+            if (s.includes('dui')) return 'dui'
             return null
           }
 
-          // 1) If structured JSON with known keys, prefer that
+            // 1) If structured JSON with known keys, prefer that
           if (obj && typeof obj === 'object') {
             // common shapes: { field: 'dui', message: '...' } or { dui: '066..', message: '...' }
             const knownField = obj.field || obj.key || obj.tuple || null
             const candidateFromMsg = obj.message || obj.error || null
-            const explicit = obj.dui || obj.duiValue || obj.email || obj.correo || obj.telefono || obj.phone || null
-            const field = normalizeField(knownField) || (explicit ? normalizeField(Object.keys(obj).find(k => ['dui','duiValue','email','correo','telefono','phone'].includes(k))) : null)
+            const explicit = obj.salario_base || obj.departamento || obj.puesto || obj.sexo || obj.evaluacion_desempeno || obj.dui || obj.duiValue || obj.email || obj.correo || obj.telefono || obj.phone || null
+            const field = normalizeField(knownField) || (explicit ? normalizeField(Object.keys(obj).find(k => ['salario_base','departamento','puesto','sexo','evaluacion_desempeno','dui','duiValue','email','correo','telefono','phone'].includes(k))) : null)
             const message = candidateFromMsg || (explicit ? String(explicit) : null)
             if (field || message) return { field: field || null, message: message || JSON.stringify(obj) }
           }
@@ -200,10 +341,10 @@ export default function EmpleadoForm() {
           const text = rawText || (err && err.message) || ''
           if (text) {
             // detect patterns like "Duplicate value for field 'dui': 066..." or "duplicate key 'dui'" or "E11000 duplicate key: { : \"dui\" }"
-            const m1 = text.match(/field\s*['"]?(dui|email|correo|telefono|phone)['"]?/i)
-            const m2 = text.match(/duplicate\s+key\s+['"]?(dui|email|correo|telefono|phone)['"]?/i)
-            const m3 = text.match(/(dui|email|correo|telefono|phone)[:=]\s*([\w@\-\.]+)/i)
-            const m4 = text.match(/E11000.*?index:\s*.*?\.(dui|email|correo|telefono|phone)\b/i)
+            const m1 = text.match(/field\s*['"]?(salario_base|departamento|puesto|sexo|evaluacion_desempeno|dui|email|correo|telefono|phone)['"]?/i)
+            const m2 = text.match(/duplicate\s+key\s+['"]?(salario_base|departamento|puesto|sexo|evaluacion_desempeno|dui|email|correo|telefono|phone)['"]?/i)
+            const m3 = text.match(/(salario_base|departamento|puesto|sexo|evaluacion_desempeno|dui|email|correo|telefono|phone)[:=]\s*([\w@\-\.]+)/i)
+            const m4 = text.match(/E11000.*?index:\s*.*?\.(salario_base|departamento|puesto|sexo|evaluacion_desempeno|dui|email|correo|telefono|phone)\b/i)
             const found = (m1 && m1[1]) || (m2 && m2[1]) || (m3 && m3[1]) || (m4 && m4[1]) || null
             if (found) {
               const fld = normalizeField(found)
@@ -225,25 +366,37 @@ export default function EmpleadoForm() {
     }
 
     try {
-  // normalize salario to number-like string (backend expects numeric)
-  const payload = { ...model }
-      // ensure estado matches backend enum style: 'Activo' or 'Inactivo'
-      if (payload.estado) {
-        const s = String(payload.estado).trim()
-        payload.estado = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
+  // build payload matching Laravel controller fields
+  const payload = { ...model };
+      // ensure numeric fields are numbers (send numbers to backend)
+      ['salario_base','bonificacion','descuento','evaluacion_desempeno'].forEach(k => {
+        if (payload[k] !== '' && payload[k] !== null && payload[k] !== undefined) {
+          const n = Number(String(payload[k]).replace(/,/g, ''))
+          if (Number.isNaN(n)) {
+            payload[k] = payload[k]
+          } else {
+            // evaluacion_desempeno uses 1 decimal, money fields use 2 decimals
+            payload[k] = k === 'evaluacion_desempeno' ? Number(Number(n).toFixed(1)) : Number(Number(n).toFixed(2))
+          }
+        } else {
+          // ensure backend receives null rather than empty string for optional numbers
+          payload[k] = null
+        }
+      })
+
+      // business rule: descuento no puede ser mayor al salario bruto (salario_base + bonificacion)
+      const sb = Number(payload.salario_base) || 0
+      const bon = Number(payload.bonificacion) || 0
+      const bruto = Number(Number(sb + bon).toFixed(2))
+      if (Number(payload.descuento) > bruto) {
+        setFieldErrors(prev => ({ ...prev, descuento: 'Descuento no puede ser mayor al salario bruto' }))
+        setError('Corrige los errores del formulario')
+        setLoading(false)
+        return
       }
-      // ensure fecha_contratacion is in yyyy-mm-dd (input type=date returns this)
-      // ensure salario is numeric if possible
-      if (payload.salario !== undefined && payload.salario !== null && payload.salario !== '') {
-        const num = Number(String(payload.salario).replace(/,/g, ''))
-        if (!Number.isNaN(num)) payload.salario = num
-        else payload.salario = payload.salario.toString()
-      }
-      // ensure salario sent as number
-      if (payload.salario !== '' && payload.salario !== null && payload.salario !== undefined) {
-        const num = Number(String(payload.salario).replace(/,/g, ''))
-        payload.salario = Number.isNaN(num) ? payload.salario : num
-      }
+
+      // estado should be integer 1/0
+      payload.estado = payload.estado ? Number(payload.estado) : 0
 
       if (id) {
         await api.update(id, payload)
@@ -256,21 +409,17 @@ export default function EmpleadoForm() {
       console.error('Error creating/updating empleado:', err)
       const dup = extractDuplicateInfo(err)
       if (dup) {
-        // Map to friendly labels
-        const labelMap = { dui: 'DUI', telefono: 'Teléfono', correo: 'Correo' }
+  // Map to friendly labels
+  const labelMap = { salario_base: 'Salario base', departamento: 'Departamento', puesto: 'Puesto' }
         const friendlyBanner = dup.field ? `El ${labelMap[dup.field] || dup.field} ya está en uso` : 'Ya existe un registro con valores duplicados'
 
         // Prefer a field-level detailed message if backend provided one, otherwise use friendlyBanner
         const fieldMessage = dup.message && String(dup.message).trim() ? String(dup.message) : friendlyBanner
         if (dup.field) {
           setFieldErrors(prev => ({ ...prev, [dup.field]: fieldMessage }))
-          // try to focus the problematic field (use ref for DUI, querySelector otherwise)
+          // try to focus the problematic field
           setTimeout(() => {
             try {
-              if (dup.field === 'dui') {
-                duiRef.current && duiRef.current.focus()
-                return
-              }
               const selectorName = dup.field === 'telefono' ? '[name="telefono_rest"]' : `[name="${dup.field}"]`
               const el = document.querySelector(selectorName)
               if (el && typeof el.focus === 'function') el.focus()
@@ -303,28 +452,36 @@ export default function EmpleadoForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nombre</label>
-              <input className="block w-full rounded border-slate-200 px-2 py-2" name="nombre" value={model.nombre || ''} onChange={handleChange} />
+              <input maxLength={100} aria-invalid={!!fieldErrors.nombre} className="block w-full rounded border-slate-200 px-2 py-2" name="nombre" value={model.nombre || ''} onChange={handleChange} />
               {fieldErrors.nombre && <p className="text-sm text-red-600 mt-1">{fieldErrors.nombre}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Apellido</label>
-              <input className="block w-full rounded border-slate-200 px-2 py-2" name="apellido" value={model.apellido || ''} onChange={handleChange} />
-              {fieldErrors.apellido && <p className="text-sm text-red-600 mt-1">{fieldErrors.apellido}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">DUI</label>
-              <input ref={duiRef} className={`block w-full rounded px-2 py-2 ${fieldErrors.dui ? 'border-red-400 bg-red-50' : 'border-slate-200'}`} name="dui" value={model.dui || ''} onChange={handleDuiChange} placeholder="00000000-0" />
+              <input maxLength={30} aria-invalid={!!fieldErrors.dui} className="block w-full rounded border-slate-200 px-2 py-2" name="dui" value={model.dui || ''} onChange={handleDuiChange} onBlur={handleDuiBlur} inputMode="numeric" placeholder="12345678-9" />
               {fieldErrors.dui && <p className="text-sm text-red-600 mt-1">{fieldErrors.dui}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-              <div className="flex items-center gap-2">
-                <span className="inline-block px-3 py-2 rounded-l border border-slate-200 bg-slate-100 text-slate-700">503-</span>
-                <input className="flex-1 rounded-r border border-slate-200 px-2 py-2" name="telefono_rest" value={(model.telefono || '').replace(/^503-/, '')} onChange={handlePhoneChange} placeholder="7777-7777" />
-              </div>
+              <input maxLength={30} aria-invalid={!!fieldErrors.telefono} className="block w-full rounded border-slate-200 px-2 py-2" name="telefono" value={model.telefono || ''} onChange={handleTelefonoChange} onBlur={handleTelefonoBlur} inputMode="tel" placeholder="2222-2222" />
               {fieldErrors.telefono && <p className="text-sm text-red-600 mt-1">{fieldErrors.telefono}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Correo</label>
+              <input maxLength={200} aria-invalid={!!fieldErrors.correo} className="block w-full rounded border-slate-200 px-2 py-2" name="correo" value={model.correo || ''} onChange={handleChange} onBlur={() => checkUnique('correo')} />
+              <p className="text-xs text-slate-500 mt-1">Ej: usuario@dominio.com</p>
+              {fieldErrors.correo && <p className="text-sm text-red-600 mt-1">{fieldErrors.correo}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
+              <select className="block w-full rounded border-slate-200 px-2 py-2" name="departamento" value={model.departamento || ''} onChange={handleChange}>
+                <option value="">--Seleccione--</option>
+                {DEPARTAMENTOS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              {fieldErrors.departamento && <p className="text-sm text-red-600 mt-1">{fieldErrors.departamento}</p>}
             </div>
 
             <div>
@@ -339,34 +496,58 @@ export default function EmpleadoForm() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Salario</label>
-              <input inputMode="decimal" className="block w-full rounded border-slate-200 px-2 py-2" name="salario" value={model.salario || ''} onChange={handleChange} />
-              {fieldErrors.salario && <p className="text-sm text-red-600 mt-1">{fieldErrors.salario}</p>}
+              <label className="block text-sm font-medium text-slate-700 mb-1">Salario base</label>
+              <input inputMode="decimal" aria-invalid={!!fieldErrors.salario_base} className="block w-full rounded border-slate-200 px-2 py-2" name="salario_base" value={model.salario_base || ''} onChange={handleChange} onBlur={() => formatNumericField('salario_base')} placeholder="0.00" />
+              <p className="text-xs text-slate-500 mt-1">Formato: números con hasta 2 decimales. Ej: 1250.00</p>
+              {fieldErrors.salario_base && <p className="text-sm text-red-600 mt-1">{fieldErrors.salario_base}</p>}
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Correo</label>
-              <input type="email" className="block w-full rounded border-slate-200 px-2 py-2" name="correo" value={model.correo || ''} onChange={handleEmailChange} placeholder="email@ejemplo.com" />
-              {fieldErrors.correo && <p className="text-sm text-red-600 mt-1">{fieldErrors.correo}</p>}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Bonificación</label>
+              <input inputMode="decimal" aria-invalid={!!fieldErrors.bonificacion} className="block w-full rounded border-slate-200 px-2 py-2" name="bonificacion" value={model.bonificacion || ''} onChange={handleChange} onBlur={() => formatNumericField('bonificacion')} placeholder="0.00" />
+              {fieldErrors.bonificacion && <p className="text-sm text-red-600 mt-1">{fieldErrors.bonificacion}</p>}
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Dirección</label>
-              <input className="block w-full rounded border-slate-200 px-2 py-2" name="direccion" value={model.direccion || ''} onChange={handleChange} placeholder="Calle, colonia, ciudad" />
-              {fieldErrors.direccion && <p className="text-sm text-red-600 mt-1">{fieldErrors.direccion}</p>}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Descuento</label>
+              <input inputMode="decimal" aria-invalid={!!fieldErrors.descuento} className="block w-full rounded border-slate-200 px-2 py-2" name="descuento" value={model.descuento || ''} onChange={handleChange} onBlur={() => formatNumericField('descuento')} placeholder="0.00" />
+              {fieldErrors.descuento && <p className="text-sm text-red-600 mt-1">{fieldErrors.descuento}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de contratación</label>
-              <input type="date" className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_contratacion" value={model.fecha_contratacion || ''} onChange={handleChange} max={(function(){const now=new Date();const esMs=now.getTime()-(6*60*60*1000);return new Date(esMs).toISOString().slice(0,10)})()} />
+              <input type="date" min={minDate1900} max={contratacionMaxDate} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_contratacion" value={model.fecha_contratacion || ''} onChange={handleChange} />
               {fieldErrors.fecha_contratacion && <p className="text-sm text-red-600 mt-1">{fieldErrors.fecha_contratacion}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de nacimiento</label>
+              <input type="date" min={minDate1900} max={birthMaxDate} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_nacimiento" value={model.fecha_nacimiento || ''} onChange={handleChange} />
+              {fieldErrors.fecha_nacimiento && <p className="text-sm text-red-600 mt-1">{fieldErrors.fecha_nacimiento}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Sexo</label>
+              <select aria-invalid={!!fieldErrors.sexo} className="block w-full rounded border-slate-200 px-2 py-2" name="sexo" value={model.sexo || ''} onChange={handleChange}>
+                {SEXOS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {/* ensure 'O' (Otro) present as fallback */}
+                {!SEXOS.find(s => s.value === 'O') && <option value="O">Otro</option>}
+              </select>
+              {fieldErrors.sexo && <p className="text-sm text-red-600 mt-1">{fieldErrors.sexo}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Evaluación desempeño</label>
+              <input inputMode="decimal" aria-invalid={!!fieldErrors.evaluacion_desempeno} className="block w-full rounded border-slate-200 px-2 py-2" name="evaluacion_desempeno" value={model.evaluacion_desempeno || ''} onChange={handleChange} onBlur={() => formatNumericField('evaluacion_desempeno')} placeholder="0.00" />
+              <p className="text-xs text-slate-500 mt-1">Rango 0–100. Ej: 95.50</p>
+              {fieldErrors.evaluacion_desempeno && <p className="text-sm text-red-600 mt-1">{fieldErrors.evaluacion_desempeno}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Estado</label>
               <select className="block w-full rounded border-slate-200 px-2 py-2" name="estado" value={model.estado} onChange={handleChange}>
-                <option value="Activo">Activo</option>
-                <option value="Inactivo">Inactivo</option>
+                <option value={1}>Activo</option>
+                <option value={0}>Inactivo</option>
               </select>
             </div>
           </div>

@@ -4,6 +4,7 @@ import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import EmpleadosList from './pages/EmpleadosList'
 import EmpleadoForm from './pages/EmpleadoForm'
+import EmpleadoDetalle from './pages/EmpleadoDetalle'
 import Estadisticas from './pages/Estadisticas'
 import NotFound from './pages/NotFound'
 
@@ -16,6 +17,7 @@ function App() {
           <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/empleados" element={<EmpleadosList />} />
+          <Route path="/empleados/:id" element={<EmpleadoDetalle />} />
           <Route path="/empleados/nuevo" element={<EmpleadoForm />} />
           <Route path="/empleados/editar/:id" element={<EmpleadoForm />} />
           <Route path="/estadisticas" element={<Estadisticas />} />

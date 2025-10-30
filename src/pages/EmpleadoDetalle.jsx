@@ -137,7 +137,7 @@ export default function EmpleadoDetalle() {
 
         <div className="card-surface">
           <h4 className="font-medium">Perfil temporal</h4>
-          <div className="mt-2 text-sm text-slate-700">Edad: <span className="font-semibold">{data.edad == null ? '-' : formatNumber(data.edad, 2)}</span></div>
+          <div className="mt-2 text-sm text-slate-700">Edad: <span className="font-semibold">{data.edad == null ? '-' : formatNumber(data.edad, 0)} años</span></div>
           <div className="mt-1 text-sm text-slate-700">Antigüedad (años): <span className="font-semibold">{data.antiguedad == null ? '-' : formatNumber(data.antiguedad, 2)}</span></div>
           <div className="mt-1 text-sm text-slate-700">Última actualización: <span className="font-semibold">{data.updated_at || '-'}</span></div>
         </div>

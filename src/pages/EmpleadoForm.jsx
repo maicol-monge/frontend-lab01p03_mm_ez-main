@@ -136,6 +136,22 @@ export default function EmpleadoForm() {
     return toDateInput(n)
   })()
 
+  // contratacion min: if fecha_nacimiento provided, contratación cannot be earlier than fecha_nacimiento + 18 years
+  const getContratacionMinDate = () => {
+    try {
+      if (model.fecha_nacimiento) {
+        const fn = new Date(model.fecha_nacimiento)
+        if (!isNaN(fn.getTime())) {
+          const d = new Date(fn)
+          d.setFullYear(d.getFullYear() + 18)
+          // ensure not earlier than minDate1900
+          return toDateInput(d)
+        }
+      }
+    } catch (_) {}
+    return minDate1900
+  }
+
   // Async uniqueness check (best-effort): use api.list with a search param and look for exact matches
   const checkUnique = async (field) => {
     try {
@@ -588,7 +604,7 @@ export default function EmpleadoForm() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de contratación</label>
-              <input type="date" min={minDate1900} max={contratacionMaxDate} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_contratacion" value={model.fecha_contratacion || ''} onChange={handleChange} />
+              <input type="date" min={getContratacionMinDate()} max={contratacionMaxDate} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_contratacion" value={model.fecha_contratacion || ''} onChange={handleChange} />
               {fieldErrors.fecha_contratacion && <p className="text-sm text-red-600 mt-1">{fieldErrors.fecha_contratacion}</p>}
             </div>
 

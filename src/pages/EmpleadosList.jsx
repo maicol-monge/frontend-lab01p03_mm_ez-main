@@ -24,9 +24,97 @@ export default function EmpleadosList() {
   const [filtroPuesto, setFiltroPuesto] = useState('')
   const [filtroSexo, setFiltroSexo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroContratacionDesde, setFiltroContratacionDesde] = useState('')
+  const [filtroContratacionHasta, setFiltroContratacionHasta] = useState('')
   const [monto, setMonto] = useState('')
   const [salarioComp, setSalarioComp] = useState('>')
   const [searchTerm, setSearchTerm] = useState('')
+  const [sortOrder, setSortOrder] = useState('desc') // 'desc' = más recientes primero, 'asc' = más antiguos primero
+
+  // Date bounds: earliest allowed date (year 1918) and today (max)
+  const MIN_CONTRATACION = '1918-01-01'
+  const getTodayStr = () => {
+    const d = new Date()
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }
+
+  const clampDateStr = (value, min, max) => {
+    if (!value) return ''
+    if (min && value < min) return min
+    if (max && value > max) return max
+    return value
+  }
+
+  // Compute dynamic max/min for each calendar so invalid days are blocked
+  const maxForDesde = () => {
+    // desde cannot be after today, and if 'hasta' is set it cannot be after 'hasta'
+    const today = getTodayStr()
+    if (filtroContratacionHasta) return filtroContratacionHasta > today ? today : filtroContratacionHasta
+    return today
+  }
+
+  const minForHasta = () => {
+    // hasta cannot be before 1918-01-01, and if 'desde' is set it cannot be before 'desde'
+    if (filtroContratacionDesde) return filtroContratacionDesde < MIN_CONTRATACION ? MIN_CONTRATACION : filtroContratacionDesde
+    return MIN_CONTRATACION
+  }
+
+  const handleDesdeChange = (val) => {
+    // allow clearing
+    if (!val) {
+      setFiltroContratacionDesde('')
+      return
+    }
+    const clamped = clampDateStr(val, MIN_CONTRATACION, getTodayStr())
+    setFiltroContratacionDesde(clamped)
+    // ensure 'hasta' is not earlier than 'desde'
+    if (filtroContratacionHasta) {
+      if (clamped > filtroContratacionHasta) {
+        // move hasta forward to match desde (but not beyond today)
+        const newHasta = clamped > getTodayStr() ? getTodayStr() : clamped
+        setFiltroContratacionHasta(newHasta)
+      }
+    }
+  }
+
+  const handleHastaChange = (val) => {
+    if (!val) {
+      setFiltroContratacionHasta('')
+      return
+    }
+    // hasta cannot be after today; clamp also to min 1918
+    const clamped = clampDateStr(val, MIN_CONTRATACION, getTodayStr())
+    setFiltroContratacionHasta(clamped)
+    // ensure 'desde' is not after 'hasta'
+    if (filtroContratacionDesde) {
+      if (filtroContratacionDesde > clamped) {
+        // move desde back to match hasta
+        const newDesde = clamped < MIN_CONTRATACION ? MIN_CONTRATACION : clamped
+        setFiltroContratacionDesde(newDesde)
+      }
+    }
+  }
+
+  const parseContratacionTime = (e) => {
+    if (!e || !e.fecha_contratacion) return null
+    const d = new Date(e.fecha_contratacion)
+    if (isNaN(d.getTime())) return null
+    return d.getTime()
+  }
+
+  function formatDate(d) {
+  if (!d) return '-'
+  try {
+    const dt = new Date(d)
+    if (isNaN(dt.getTime())) return String(d)
+    return dt.toLocaleDateString(undefined)
+  } catch (_) {
+    return String(d)
+  }
+}
 
   const load = async (opts = {}) => {
     setLoading(true)
@@ -37,6 +125,8 @@ export default function EmpleadosList() {
         per_page: perPage,
         departamento: filtroDepartamento || undefined,
         puesto: filtroPuesto || undefined,
+        fecha_contratacion_desde: filtroContratacionDesde || undefined,
+        fecha_contratacion_hasta: filtroContratacionHasta || undefined,
         sexo: sexoParam,
         estado: normalizedEstado !== '' ? (normalizedEstado === '1' ? 1 : (normalizedEstado === '0' ? 0 : normalizedEstado)) : undefined,
         with_inactive: opts.with_inactive ? true : undefined,
@@ -94,6 +184,28 @@ export default function EmpleadosList() {
     }
   if (filtroDepartamento) res = res.filter(e => e.departamento === filtroDepartamento)
   if (filtroPuesto) res = res.filter(e => e.puesto === filtroPuesto)
+  if (filtroContratacionDesde) {
+    const desde = new Date(filtroContratacionDesde)
+    if (!isNaN(desde.getTime())) {
+      res = res.filter(e => {
+        try {
+          const ec = new Date(e.fecha_contratacion)
+          return !isNaN(ec.getTime()) && ec >= desde
+        } catch (_) { return false }
+      })
+    }
+  }
+  if (filtroContratacionHasta) {
+    const hasta = new Date(filtroContratacionHasta)
+    if (!isNaN(hasta.getTime())) {
+      res = res.filter(e => {
+        try {
+          const ec = new Date(e.fecha_contratacion)
+          return !isNaN(ec.getTime()) && ec <= hasta
+        } catch (_) { return false }
+      })
+    }
+  }
   if (filtroSexo) res = res.filter(e => String(e.sexo || '').toLowerCase() === String(filtroSexo).toLowerCase())
   if (filtroEstado) {
     const nf = normalizeEstado(filtroEstado)
@@ -106,7 +218,16 @@ export default function EmpleadosList() {
         else res = res.filter(e => parseFloat(e.salario_base) < num)
       }
     }
-    setEmpleados(res)
+      // apply sorting by fecha_contratacion (default: desc = más recientes primero)
+      res.sort((a, b) => {
+        const ta = parseContratacionTime(a)
+        const tb = parseContratacionTime(b)
+        // treat missing dates as very old so they appear last when sorting desc
+        const vala = ta === null ? -8640000000000000 : ta
+        const valb = tb === null ? -8640000000000000 : tb
+        return sortOrder === 'desc' ? (valb - vala) : (vala - valb)
+      })
+      setEmpleados(res)
   }
 
   const clearFiltros = () => {
@@ -114,6 +235,8 @@ export default function EmpleadosList() {
     setFiltroPuesto('')
     setFiltroSexo('')
     setFiltroEstado('')
+    setFiltroContratacionDesde('')
+    setFiltroContratacionHasta('')
     setMonto('')
     setSalarioComp('>')
     setSearchTerm('')
@@ -126,7 +249,7 @@ export default function EmpleadosList() {
   useEffect(() => {
     aplicarFiltros()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroDepartamento, filtroPuesto, filtroSexo, filtroEstado, monto, salarioComp, searchTerm, allEmpleados])
+  }, [filtroDepartamento, filtroPuesto, filtroSexo, filtroEstado, filtroContratacionDesde, filtroContratacionHasta, monto, salarioComp, searchTerm, allEmpleados, sortOrder])
 
   return (
     <div className="page-container">
@@ -171,6 +294,38 @@ export default function EmpleadosList() {
               {PUESTOS.map(p => (
                 <option key={p} value={p}>{p}</option>
               ))}
+            </select>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Contratación desde</label>
+            <input
+              type="date"
+              className="block w-full rounded border-slate-200"
+              value={filtroContratacionDesde}
+              min={MIN_CONTRATACION}
+              max={maxForDesde()}
+              onChange={e => handleDesdeChange(e.target.value)}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Contratación hasta</label>
+            <input
+              type="date"
+              className="block w-full rounded border-slate-200"
+              value={filtroContratacionHasta}
+              min={minForHasta()}
+              max={getTodayStr()}
+              onChange={e => handleHastaChange(e.target.value)}
+            />
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Orden</label>
+            <select className="block w-full rounded border-slate-200" value={sortOrder} onChange={e => { setSortOrder(e.target.value); setPage(1); }}>
+              <option value="desc">Más recientes</option>
+              <option value="asc">Más antiguos</option>
             </select>
           </div>
 
@@ -244,7 +399,7 @@ export default function EmpleadosList() {
                 <td className="tg-table td">{e.salario_base}</td>
                 <td className="tg-table td">{e.bonificacion}</td>
                 <td className="tg-table td">{e.descuento}</td>
-                <td className="tg-table td">{e.fecha_contratacion}</td>
+                <td className="tg-table td">{formatDate(e.fecha_contratacion)}</td>
                 <td className="tg-table td">{e.sexo}</td>
                 <td className="tg-table td">{e.estado === 1 ? 'Activo' : 'Inactivo'}</td>
                 <td className="tg-table td">

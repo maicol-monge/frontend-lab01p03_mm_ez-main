@@ -207,7 +207,7 @@ export default function EmpleadosList() {
 
           {/* Buttons moved out below to a separate row so inputs (especialmente salario) nunca se solapen */}
         </div>
-        <div className="mt-3 flex flex-wrap md:flex-nowrap justify-end gap-2">
+        <div className="mt-3 flex flex-wrap md:flex-nowrap justify-start gap-2">
           <button className="btn-primary-tailwind whitespace-nowrap" onClick={() => load({ with_inactive: false, page: 1 })}>Aplicar filtros</button>
           <button className="rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 whitespace-nowrap" onClick={clearFiltros}>Limpiar</button>
           <button className="rounded border border-red-400 px-3 py-2 text-sm text-red-700 whitespace-nowrap" onClick={() => load({ with_inactive: true })}>Recargar (incluye inactivos)</button>

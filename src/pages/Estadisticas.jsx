@@ -156,8 +156,12 @@ export default function Estadisticas() {
 
   // Line: Evolución salario promedio por año (from employees.updated_at and salario_neto)
   // Prefer server-provided series if available, otherwise derive from employees.updated_at
-  const serverSeries = (s && Array.isArray(s.evolucion_salario_promedio_por_anio) && s.evolucion_salario_promedio_por_anio.length)
-    ? s.evolucion_salario_promedio_por_anio.map(i => ({ year: i.year, avg: Number.isFinite(Number(i.promedio)) ? Number(i.promedio) : null }))
+  // Respect server intent: if the API included the property `evolucion_salario_promedio_por_anio` (even as an empty array)
+  // we should use that dataset (possibly empty) and NOT fall back to local derivation. Only fall back when the
+  // property is absent from the server payload.
+  const serverProvidedEvolucion = stats && Object.prototype.hasOwnProperty.call(stats, 'evolucion_salario_promedio_por_anio')
+  const serverSeries = serverProvidedEvolucion
+    ? (Array.isArray(stats.evolucion_salario_promedio_por_anio) ? stats.evolucion_salario_promedio_por_anio.map(i => ({ year: i.year, avg: Number.isFinite(Number(i.promedio)) ? Number(i.promedio) : null })) : [])
     : null
 
   const localSeries = (() => {
@@ -180,11 +184,17 @@ export default function Estadisticas() {
     return items
   })()
 
-  const seriesByYear = serverSeries && serverSeries.length ? serverSeries : localSeries
+  const seriesByYear = serverSeries !== null ? serverSeries : localSeries
 
   const lineLabels = seriesByYear.map(i => String(i.year))
   // round year averages to 2 decimals
   const lineValues = seriesByYear.map(i => Number.isFinite(Number(i.avg)) ? Number(Number(i.avg).toFixed(2)) : 0)
+
+  // Decide whether to show the scatter chart: prefer server information when present.
+  const serverProvidedScatterInfo = stats && (Object.prototype.hasOwnProperty.call(stats, 'personal_eval_gt_70') || Object.prototype.hasOwnProperty.call(stats, 'empleados_con_eval_gt_95'))
+  const serverHasScatterData = serverProvidedScatterInfo ? ((Array.isArray(stats.personal_eval_gt_70) && stats.personal_eval_gt_70.length > 0) || (Array.isArray(stats.empleados_con_eval_gt_95) && stats.empleados_con_eval_gt_95.length > 0)) : null
+  // showScatter: if server provided scatter-related arrays, require them non-empty; otherwise fall back to client-derived points
+  const showScatter = !chartsLoading && (serverHasScatterData === null ? scatterPoints.length > 0 : serverHasScatterData)
 
   const estadoLabels = Object.keys(s.distribucion_sexo_map || {})
   const estadoValues = estadoLabels.map(k => s.distribucion_sexo_map[k] || 0)
@@ -371,7 +381,7 @@ export default function Estadisticas() {
         </div>
         <div className="card-surface">
           <h5 className="text-lg font-medium mb-3">Desempeño vs Salario Base</h5>
-          {chartsLoading ? <p>Cargando datos...</p> : (scatterPoints.length ? <Scatter data={scatterData} options={{ responsive: true, scales: { x: { title: { display: true, text: 'Salario base' } }, y: { title: { display: true, text: 'Evaluación' }, min: 0, max: 100 } } }} /> : <p>No hay suficientes datos para el scatter</p>)}
+          {chartsLoading ? <p>Cargando datos...</p> : (showScatter ? <Scatter data={scatterData} options={{ responsive: true, scales: { x: { title: { display: true, text: 'Salario base' } }, y: { title: { display: true, text: 'Evaluación' }, min: 0, max: 100 } } }} /> : <p>No hay suficientes datos para el scatter</p>)}
         </div>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">

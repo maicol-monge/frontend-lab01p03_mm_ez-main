@@ -128,6 +128,27 @@ export default function EmpleadoForm() {
       return toDateInput(n)
     }
   }
+  // birth min: by default today - 65 years (no employees older than 65),
+  // but if fecha_contratacion is set use fecha_contratacion - 65 years
+  const getBirthMinDate = () => {
+    try {
+      if (model.fecha_contratacion) {
+        const fc = new Date(model.fecha_contratacion)
+        if (!isNaN(fc.getTime())) {
+          const d = new Date(fc)
+          d.setFullYear(d.getFullYear() - 65)
+          return toDateInput(d)
+        }
+      }
+      const n = esNow()
+      n.setFullYear(n.getFullYear() - 65)
+      return toDateInput(n)
+    } catch (e) {
+      const n = esNow()
+      n.setFullYear(n.getFullYear() - 65)
+      return toDateInput(n)
+    }
+  }
   // contratacion max: today minus recentDays (prevent dates too close to now)
   const RECENT_DAYS_BLOCK = 2 // assumption: contratación cannot be within the last 2 days
   const contratacionMaxDate = (() => {
@@ -193,7 +214,22 @@ export default function EmpleadoForm() {
           if (isNaN(fn.getTime()) || fn > birthLimitAtHiring) {
             setFieldErrors(prev => ({ ...prev, fecha_nacimiento: 'Empleado debe tener al menos 18 años al momento de la contratación' }))
           } else {
-            setFieldErrors(prev => { const c = { ...prev }; delete c.fecha_nacimiento; return c })
+            // additionally ensure employee is not older than 65 at hiring
+            const ageAtHiring = (function(birth, at) {
+              try {
+                const by = birth.getFullYear()
+                const ay = at.getFullYear()
+                let age = ay - by
+                // adjust if birthday hasn't occurred yet this year
+                if (at.getMonth() < birth.getMonth() || (at.getMonth() === birth.getMonth() && at.getDate() < birth.getDate())) age -= 1
+                return age
+              } catch (_) { return null }
+            })(fn, fc)
+            if (ageAtHiring != null && ageAtHiring > 65) {
+              setFieldErrors(prev => ({ ...prev, fecha_nacimiento: 'Empleado no puede ser mayor de 65 años al momento de la contratación' }))
+            } else {
+              setFieldErrors(prev => { const c = { ...prev }; delete c.fecha_nacimiento; return c })
+            }
           }
         }
       } catch (_) {}
@@ -210,7 +246,21 @@ export default function EmpleadoForm() {
           if (fn > birthLimitAtHiring) {
             setFieldErrors(prev => ({ ...prev, fecha_nacimiento: 'Empleado debe tener al menos 18 años al momento de la contratación' }))
           } else {
-            setFieldErrors(prev => { const c = { ...prev }; delete c.fecha_nacimiento; return c })
+            // ensure not older than 65 at hiring
+            const ageAtHiring = (function(birth, at) {
+              try {
+                const by = birth.getFullYear()
+                const ay = at.getFullYear()
+                let age = ay - by
+                if (at.getMonth() < birth.getMonth() || (at.getMonth() === birth.getMonth() && at.getDate() < birth.getDate())) age -= 1
+                return age
+              } catch (_) { return null }
+            })(fn, fc)
+            if (ageAtHiring != null && ageAtHiring > 65) {
+              setFieldErrors(prev => ({ ...prev, fecha_nacimiento: 'Empleado no puede ser mayor de 65 años al momento de la contratación' }))
+            } else {
+              setFieldErrors(prev => { const c = { ...prev }; delete c.fecha_nacimiento; return c })
+            }
           }
         }
       } catch (_) {}
@@ -328,7 +378,37 @@ export default function EmpleadoForm() {
         // i.e., fecha_nacimiento <= fecha_contratacion - 18 years
         const birthLimitAtHiring = (() => { const d = new Date(fc); d.setFullYear(d.getFullYear() - 18); return d })()
         if (fn > birthLimitAtHiring) errs.fecha_nacimiento = 'Empleado debe tener al menos 18 años al momento de la contratación'
+        // ensure employee is not older than 65 at hiring
+        const ageAtHiring = (function(birth, at) {
+          try {
+            const by = birth.getFullYear()
+            const ay = at.getFullYear()
+            let age = ay - by
+            if (at.getMonth() < birth.getMonth() || (at.getMonth() === birth.getMonth() && at.getDate() < birth.getDate())) age -= 1
+            return age
+          } catch (_) { return null }
+        })(fn, fc)
+        if (ageAtHiring != null && ageAtHiring > 65) errs.fecha_nacimiento = 'Empleado no puede ser mayor de 65 años al momento de la contratación'
       }
+    }
+
+    // If only fecha_nacimiento is provided (no contratacion yet), ensure not older than 65 today
+    if (model.fecha_nacimiento && !model.fecha_contratacion) {
+      try {
+        const fnOnly = new Date(model.fecha_nacimiento)
+        if (!isNaN(fnOnly.getTime())) {
+          const ageNow = (function(birth, at) {
+            try {
+              const by = birth.getFullYear()
+              const ay = at.getFullYear()
+              let age = ay - by
+              if (at.getMonth() < birth.getMonth() || (at.getMonth() === birth.getMonth() && at.getDate() < birth.getDate())) age -= 1
+              return age
+            } catch (_) { return null }
+          })(fnOnly, esNow())
+          if (ageNow != null && ageNow > 65) errs.fecha_nacimiento = 'Empleado no puede ser mayor de 65 años'
+        }
+      } catch (_) {}
     }
 
     // sexo: required and must be one of allowed
@@ -610,7 +690,7 @@ export default function EmpleadoForm() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de nacimiento</label>
-              <input type="date" min={minDate1900} max={getBirthMaxDate()} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_nacimiento" value={model.fecha_nacimiento || ''} onChange={handleChange} />
+              <input type="date" min={getBirthMinDate()} max={getBirthMaxDate()} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_nacimiento" value={model.fecha_nacimiento || ''} onChange={handleChange} />
               {fieldErrors.fecha_nacimiento && <p className="text-sm text-red-600 mt-1">{fieldErrors.fecha_nacimiento}</p>}
             </div>
 

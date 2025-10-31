@@ -29,6 +29,9 @@ export default function EmpleadoForm() {
   const [fieldErrors, setFieldErrors] = useState({})
   // no DUI/telefono fields in the current model
 
+  // If editing an existing employee and it's inactive, prevent editing other fields
+  const isEditingInactive = Boolean(id && (model && (model.estado === 0 || model.estado === '0')))
+
   // Format server-side messages into a concise, user-friendly banner string
   const formatErrorForBanner = (raw) => {
     try {
@@ -616,36 +619,39 @@ export default function EmpleadoForm() {
       <div className="card-surface">
         <h3 className="text-lg font-medium mb-3">{id ? 'Editar' : 'Crear'} Empleado</h3>
         {error && <div className="rounded bg-red-50 text-red-700 p-3 mb-3">{error}</div>}
+        {isEditingInactive && (
+          <div className="rounded bg-yellow-50 text-yellow-800 p-3 mb-3">Registro inactivo — los campos están deshabilitados hasta que active el empleado desde el campo <strong>Estado</strong>.</div>
+        )}
         <form onSubmit={submit}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nombre</label>
-              <input maxLength={100} aria-invalid={!!fieldErrors.nombre} className="block w-full rounded border-slate-200 px-2 py-2" name="nombre" value={model.nombre || ''} onChange={handleChange} />
+              <input maxLength={100} aria-invalid={!!fieldErrors.nombre} className="block w-full rounded border-slate-200 px-2 py-2" name="nombre" value={model.nombre || ''} onChange={handleChange} disabled={isEditingInactive} />
               {fieldErrors.nombre && <p className="text-sm text-red-600 mt-1">{fieldErrors.nombre}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">DUI</label>
-              <input maxLength={30} aria-invalid={!!fieldErrors.dui} className="block w-full rounded border-slate-200 px-2 py-2" name="dui" value={model.dui || ''} onChange={handleDuiChange} onBlur={handleDuiBlur} inputMode="numeric" placeholder="12345678-9" />
+              <input maxLength={30} aria-invalid={!!fieldErrors.dui} className="block w-full rounded border-slate-200 px-2 py-2" name="dui" value={model.dui || ''} onChange={handleDuiChange} onBlur={handleDuiBlur} inputMode="numeric" placeholder="12345678-9" disabled={isEditingInactive} />
               {fieldErrors.dui && <p className="text-sm text-red-600 mt-1">{fieldErrors.dui}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-              <input maxLength={30} aria-invalid={!!fieldErrors.telefono} className="block w-full rounded border-slate-200 px-2 py-2" name="telefono" value={model.telefono || ''} onChange={handleTelefonoChange} onBlur={handleTelefonoBlur} inputMode="tel" placeholder="2222-2222" />
+              <input maxLength={30} aria-invalid={!!fieldErrors.telefono} className="block w-full rounded border-slate-200 px-2 py-2" name="telefono" value={model.telefono || ''} onChange={handleTelefonoChange} onBlur={handleTelefonoBlur} inputMode="tel" placeholder="2222-2222" disabled={isEditingInactive} />
               {fieldErrors.telefono && <p className="text-sm text-red-600 mt-1">{fieldErrors.telefono}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Correo</label>
-              <input maxLength={200} aria-invalid={!!fieldErrors.correo} className="block w-full rounded border-slate-200 px-2 py-2" name="correo" value={model.correo || ''} onChange={handleChange} onBlur={() => checkUnique('correo')} />
+              <input maxLength={200} aria-invalid={!!fieldErrors.correo} className="block w-full rounded border-slate-200 px-2 py-2" name="correo" value={model.correo || ''} onChange={handleChange} onBlur={() => checkUnique('correo')} disabled={isEditingInactive} />
               <p className="text-xs text-slate-500 mt-1">Ej: usuario@dominio.com</p>
               {fieldErrors.correo && <p className="text-sm text-red-600 mt-1">{fieldErrors.correo}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
-              <select className="block w-full rounded border-slate-200 px-2 py-2" name="departamento" value={model.departamento || ''} onChange={handleChange}>
+              <select className="block w-full rounded border-slate-200 px-2 py-2" name="departamento" value={model.departamento || ''} onChange={handleChange} disabled={isEditingInactive}>
                 <option value="">--Seleccione--</option>
                 {DEPARTAMENTOS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
@@ -654,7 +660,7 @@ export default function EmpleadoForm() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
-              <select className="block w-full rounded border-slate-200 px-2 py-2" name="puesto" value={model.puesto || ''} onChange={handleChange}>
+              <select className="block w-full rounded border-slate-200 px-2 py-2" name="puesto" value={model.puesto || ''} onChange={handleChange} disabled={isEditingInactive}>
                 <option value="">--Seleccione--</option>
                 {PUESTOS.map(p => (
                   <option key={p} value={p}>{p}</option>
@@ -665,38 +671,38 @@ export default function EmpleadoForm() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Salario base</label>
-              <input inputMode="decimal" aria-invalid={!!fieldErrors.salario_base} className="block w-full rounded border-slate-200 px-2 py-2" name="salario_base" value={model.salario_base || ''} onChange={handleChange} onBlur={() => formatNumericField('salario_base')} placeholder="0.00" />
+              <input inputMode="decimal" aria-invalid={!!fieldErrors.salario_base} className="block w-full rounded border-slate-200 px-2 py-2" name="salario_base" value={model.salario_base || ''} onChange={handleChange} onBlur={() => formatNumericField('salario_base')} placeholder="0.00" disabled={isEditingInactive} />
               <p className="text-xs text-slate-500 mt-1">Formato: números con hasta 2 decimales. Ej: 1250.00</p>
               {fieldErrors.salario_base && <p className="text-sm text-red-600 mt-1">{fieldErrors.salario_base}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Bonificación</label>
-              <input inputMode="decimal" aria-invalid={!!fieldErrors.bonificacion} className="block w-full rounded border-slate-200 px-2 py-2" name="bonificacion" value={model.bonificacion || ''} onChange={handleChange} onBlur={() => formatNumericField('bonificacion')} placeholder="0.00" />
+              <input inputMode="decimal" aria-invalid={!!fieldErrors.bonificacion} className="block w-full rounded border-slate-200 px-2 py-2" name="bonificacion" value={model.bonificacion || ''} onChange={handleChange} onBlur={() => formatNumericField('bonificacion')} placeholder="0.00" disabled={isEditingInactive} />
               {fieldErrors.bonificacion && <p className="text-sm text-red-600 mt-1">{fieldErrors.bonificacion}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Descuento</label>
-              <input inputMode="decimal" aria-invalid={!!fieldErrors.descuento} className="block w-full rounded border-slate-200 px-2 py-2" name="descuento" value={model.descuento || ''} onChange={handleChange} onBlur={() => formatNumericField('descuento')} placeholder="0.00" />
+              <input inputMode="decimal" aria-invalid={!!fieldErrors.descuento} className="block w-full rounded border-slate-200 px-2 py-2" name="descuento" value={model.descuento || ''} onChange={handleChange} onBlur={() => formatNumericField('descuento')} placeholder="0.00" disabled={isEditingInactive} />
               {fieldErrors.descuento && <p className="text-sm text-red-600 mt-1">{fieldErrors.descuento}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de contratación</label>
-              <input type="date" min={getContratacionMinDate()} max={contratacionMaxDate} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_contratacion" value={model.fecha_contratacion || ''} onChange={handleChange} />
+              <input type="date" min={getContratacionMinDate()} max={contratacionMaxDate} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_contratacion" value={model.fecha_contratacion || ''} onChange={handleChange} disabled={isEditingInactive} />
               {fieldErrors.fecha_contratacion && <p className="text-sm text-red-600 mt-1">{fieldErrors.fecha_contratacion}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de nacimiento</label>
-              <input type="date" min={getBirthMinDate()} max={getBirthMaxDate()} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_nacimiento" value={model.fecha_nacimiento || ''} onChange={handleChange} />
+              <input type="date" min={getBirthMinDate()} max={getBirthMaxDate()} className="block w-full rounded border-slate-200 px-2 py-2" name="fecha_nacimiento" value={model.fecha_nacimiento || ''} onChange={handleChange} disabled={isEditingInactive} />
               {fieldErrors.fecha_nacimiento && <p className="text-sm text-red-600 mt-1">{fieldErrors.fecha_nacimiento}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Sexo</label>
-              <select aria-invalid={!!fieldErrors.sexo} className="block w-full rounded border-slate-200 px-2 py-2" name="sexo" value={model.sexo || ''} onChange={handleChange}>
+              <select aria-invalid={!!fieldErrors.sexo} className="block w-full rounded border-slate-200 px-2 py-2" name="sexo" value={model.sexo || ''} onChange={handleChange} disabled={isEditingInactive}>
                 {SEXOS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 {/* ensure 'O' (Otro) present as fallback */}
                 {!SEXOS.find(s => s.value === 'O') && <option value="O">Otro</option>}
@@ -706,7 +712,7 @@ export default function EmpleadoForm() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Evaluación desempeño</label>
-              <input inputMode="decimal" aria-invalid={!!fieldErrors.evaluacion_desempeno} className="block w-full rounded border-slate-200 px-2 py-2" name="evaluacion_desempeno" value={model.evaluacion_desempeno || ''} onChange={handleChange} onBlur={() => formatNumericField('evaluacion_desempeno')} placeholder="0.00" />
+              <input inputMode="decimal" aria-invalid={!!fieldErrors.evaluacion_desempeno} className="block w-full rounded border-slate-200 px-2 py-2" name="evaluacion_desempeno" value={model.evaluacion_desempeno || ''} onChange={handleChange} onBlur={() => formatNumericField('evaluacion_desempeno')} placeholder="0.00" disabled={isEditingInactive} />
               <p className="text-xs text-slate-500 mt-1">Rango 0–100. Ej: 95.50</p>
               {fieldErrors.evaluacion_desempeno && <p className="text-sm text-red-600 mt-1">{fieldErrors.evaluacion_desempeno}</p>}
             </div>
